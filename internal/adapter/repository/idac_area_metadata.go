@@ -1,0 +1,57 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+
+	"idac-amane-bot/internal/config"
+	"idac-amane-bot/internal/domain/entity"
+	"idac-amane-bot/internal/domain/port"
+)
+
+type IDACAreaMetadataRepository struct {
+	DB        *sql.DB
+	tableName string
+}
+
+func NewIDACAreaMetadataRepository(db *sql.DB, tables config.DatabaseTablesConfig) port.IDACAreaMetadataRepository {
+	return &IDACAreaMetadataRepository{
+		DB:        db,
+		tableName: quoteIdent(tables.IDACAreaMetadata),
+	}
+}
+
+func (r *IDACAreaMetadataRepository) GetAll(ctx context.Context) ([]entity.IDACAreaMetadata, error) {
+	// Explicit column list (in scan order) so an added/reordered column can't
+	// silently corrupt the positional Scan below.
+	// COALESCE(area_code, '') so rows where the new column is still NULL scan cleanly.
+	query := fmt.Sprintf(
+		`SELECT id, sega_area_code, name, aliases, created_at, updated_at, all_net_area_code, area_type, COALESCE(area_code, '') FROM %s`,
+		r.tableName,
+	)
+	rows, err := r.DB.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var areas []entity.IDACAreaMetadata
+	for rows.Next() {
+		var area entity.IDACAreaMetadata
+		if err := rows.Scan(
+			&area.ID,
+			&area.SegaAreaCode,
+			&area.Name,
+			&area.Aliases,
+			&area.CreatedAt,
+			&area.UpdatedAt,
+			&area.ALLNetCode,
+			&area.AreaType,
+			&area.AreaCode); err != nil {
+			return nil, err
+		}
+		areas = append(areas, area)
+	}
+	return areas, rows.Err()
+}

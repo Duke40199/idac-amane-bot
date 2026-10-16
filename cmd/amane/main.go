@@ -12,6 +12,7 @@ import (
 
 	"idac-amane-bot/internal/adapter/database"
 	discord_handler "idac-amane-bot/internal/adapter/discord"
+	"idac-amane-bot/internal/adapter/repository"
 	"idac-amane-bot/internal/config"
 	"idac-amane-bot/pkg/logger"
 )
@@ -31,11 +32,18 @@ func main() {
 	if err != nil {
 		log.Fatal("Postgres database connection error: ", err)
 	}
-	// dbConn is wired and ready for repositories (internal/adapter/repository).
 	defer dbConn.Close()
 
 	// 3. Init Repositories
-	// (none yet — add repositories here as features grow)
+	aliasRepo := repository.NewAliasRepo(dbConn, cfg.DatabaseTablesCfg)
+	obRankingCfgRepo := repository.NewOBRankingCfgRepository(dbConn, cfg.DatabaseTablesCfg)
+	rankingCfgRepo := repository.NewRankingCfgRepo(dbConn, cfg.DatabaseTablesCfg)
+	carRepo := repository.NewCarRepository(dbConn, cfg.DatabaseTablesCfg)
+	taTimeMetadataRepo := repository.NewTATimeMetadataRepository(dbConn, cfg.DatabaseTablesCfg)
+	cfsStateRepo := repository.NewCfsStateRepository(dbConn, cfg.DatabaseTablesCfg)
+	areaRepo := repository.NewAreaRepository(dbConn, cfg.DatabaseTablesCfg)
+	areaMetadataRepo := repository.NewIDACAreaMetadataRepository(dbConn, cfg.DatabaseTablesCfg)
+	storeLocationRepo := repository.NewAllNetStoreLocationsRepository(dbConn, cfg.DatabaseTablesCfg)
 
 	// 4. Init Discord Session
 	discordSession, err := discord_handler.NewDiscordSession(&cfg.DiscordCfg)
@@ -53,6 +61,15 @@ func main() {
 	cmdHandler := discord_handler.NewHandler(
 		discordSession.Session,
 		cfg.DiscordCfg.BotOwnerID,
+		aliasRepo,
+		obRankingCfgRepo,
+		rankingCfgRepo,
+		carRepo,
+		taTimeMetadataRepo,
+		cfsStateRepo,
+		areaRepo,
+		areaMetadataRepo,
+		storeLocationRepo,
 	)
 	// 6. Register Commands & Event Handlers
 	if err := cmdHandler.RegisterCommands(); err != nil {
