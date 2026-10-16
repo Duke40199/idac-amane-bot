@@ -1,0 +1,47 @@
+package database
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	"idac-amane-bot/internal/config"
+
+	// Registers the "postgres" driver with database/sql via its init(). Imported
+	// here (rather than relying on a repository import) so the driver is available
+	// wherever a connection is opened.
+	_ "github.com/lib/pq"
+)
+
+type Database interface{}
+
+type PostgresDB struct {
+}
+
+func NewPostgresDBConn(cfg config.DatabaseConfig) (*sql.DB, error) {
+	sslMode := cfg.SSLMode
+	if sslMode == "" {
+		sslMode = "require"
+	}
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, sslMode)
+	dbConn, err := sql.Open("postgres", psqlInfo)
+	if err != nil {
+		// Return the error so the caller decides how to handle it, instead of
+		// killing the process from inside a constructor.
+		return nil, fmt.Errorf("opening postgres connection: %w", err)
+	}
+	dbConn.SetMaxOpenConns(10)
+	dbConn.SetMaxIdleConns(5)
+	dbConn.SetConnMaxLifetime(time.Hour)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := dbConn.PingContext(ctx); err != nil {
+		dbConn.Close()
+		return nil, fmt.Errorf("pinging postgres: %w", err)
+	}
+
+	return dbConn, nil
+}
