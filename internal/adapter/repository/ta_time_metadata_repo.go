@@ -1,0 +1,71 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+
+	"idac-amane-bot/internal/config"
+	"idac-amane-bot/internal/domain/entity"
+	"idac-amane-bot/internal/domain/port"
+	"idac-amane-bot/pkg/logger"
+
+	_ "github.com/lib/pq"
+)
+
+type TATimeMetadataRepository struct {
+	DB                    *sql.DB
+	taTimeMetadataTable   string
+	cfgPlayerRankingTable string
+}
+
+// NewTATimeMetadataRepository returns the struct that satisfies TATimeMetadataRepository
+func NewTATimeMetadataRepository(db *sql.DB, tables config.DatabaseTablesConfig) port.TATimeMetadataRepository {
+	return &TATimeMetadataRepository{
+		DB:                    db,
+		taTimeMetadataTable:   quoteIdent(tables.IDACTATimeMetadata),
+		cfgPlayerRankingTable: quoteIdent(tables.CfgPlayerRanking),
+	}
+}
+
+// GetByCourseID fetches time ranking from DB
+func (r *TATimeMetadataRepository) GetByCourseID(ctx context.Context, courseID string) ([]*entity.TimeAttackRankingMetadata, error) {
+	// 1. Debug exactly what is being passed
+	query := fmt.Sprintf(`
+        SELECT m.id, m.required_time, r.name
+        FROM %s m
+        LEFT JOIN %s r ON m.rank_id::uuid = r.id
+        WHERE m.course_id = $1
+        ORDER BY m.required_time ASC`, r.taTimeMetadataTable, r.cfgPlayerRankingTable)
+
+	rows, err := r.DB.QueryContext(ctx, query, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("query execution failed: %w", err)
+	}
+	defer rows.Close()
+
+	var listCfg []*entity.TimeAttackRankingMetadata
+	var rowCount int
+
+	for rows.Next() {
+		rowCount++
+		var cfg entity.TimeAttackRankingMetadata
+		if err := rows.Scan(&cfg.ID, &cfg.RequiredTime, &cfg.RankName); err != nil {
+			return nil, fmt.Errorf("failed to scan row %d: %w", rowCount, err)
+		}
+		listCfg = append(listCfg, &cfg)
+	}
+	// 2. Catch errors that happened DURING the loop
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %w", err)
+	}
+	// 3. Debug how many rows were actually found
+	logger.Debug(ctx, fmt.Sprintf("query successful, found %d rows", rowCount))
+
+	return listCfg, nil
+}
+
+// Load is not needed for DB (Query on demand), so we leave it empty to satisfy interface
+func (r *TATimeMetadataRepository) Load() error {
+	return nil
+}
